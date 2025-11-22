@@ -4,18 +4,20 @@
 # Secure Swisstronik Contract Deployment and Interaction Script
 #
 # This script provides a secure and organized way to deploy and interact with
-# Swisstronik smart contracts. It replaces the previous set of insecure scripts
-# with a single, robust solution that emphasizes security and usability.
+# Swisstronik smart contracts. It emphasizes security by removing unsafe
+# commands and using environment variables for sensitive data.
 #
 # Features:
-# - Modular design with functions for each task.
-# - Secure handling of private keys and other sensitive data.
+# - Automated dependency checks and installation.
+# - Centralized Hardhat project initialization.
+# - Modular, reusable functions for contract deployment and interaction.
+# - Secure handling of private keys.
 # - User-friendly menu for easy navigation.
-# - Removal of unsafe commands like remote script execution and sudo.
 #
 # Usage:
-# 1. Set the required environment variables (PRIVATE_KEY, etc.).
-# 2. Run the script and choose an option from the menu.
+# 1. Set the required environment variables (e.g., PRIVATE_KEY).
+# 2. Run the script: ./secure-script.sh
+# 3. Follow the on-screen menu to choose an option.
 # ==============================================================================
 
 # Exit immediately if a command exits with a non-zero status
@@ -34,22 +36,41 @@ check_env_vars() {
 
 # --- Function Definitions ---
 
-# Sanitize user input
-sanitize_input() {
-  echo "$1" | sed 's/[^a-zA-Z0-9_]//g'
+# Function to check for required command-line tools
+check_requirements() {
+  echo "Checking for required tools (node, npm, npx)..."
+  for cmd in node npm npx; do
+    if ! command -v "$cmd" &> /dev/null; then
+      echo "Error: $cmd is not installed. Please install it before running."
+      exit 1
+    fi
+  done
+  echo "All required tools are installed."
 }
 
-# Deploy a simple Swisstronik contract
-task_1() {
-  echo "Running Task 1: Deploying a simple Swisstronik contract..."
+# Function to install required npm packages
+install_dependencies() {
+  if [ ! -d "node_modules" ]; then
+    echo "Installing required npm packages..."
+    npm install dotenv @swisstronik/utils @openzeppelin/contracts @nomicfoundation/hardhat-toolbox @openzeppelin/hardhat-upgrades hardhat
+  else
+    echo "Dependencies already installed."
+  fi
+}
 
-  # Configure Hardhat
+# Function to initialize a new Hardhat project
+initialize_project() {
+  echo "Initializing Hardhat project..."
+  npx hardhat init --force
+
+  # Create hardhat.config.js
   cat <<EOL > hardhat.config.js
 require("@nomicfoundation/hardhat-toolbox");
+require("@openzeppelin/hardhat-upgrades");
 require("dotenv").config();
 
 module.exports = {
-  solidity: "0.8.19",
+  solidity: "0.8.20",
   networks: {
     swisstronik: {
       url: "https://json-rpc.testnet.swisstronik.com/",
@@ -58,6 +79,16 @@ module.exports = {
   },
 };
 EOL
+}
+
+# Sanitize user input to prevent command injection
+sanitize_input() {
+  echo "$1" | sed 's/[^a-zA-Z0-9_]//g'
+}
+
+# Deploy a simple Swisstronik contract
+task_1() {
+  echo "Running Task 1: Deploying a simple Swisstronik contract..."
 
   # Create and compile the contract
   cat <<EOL > contracts/Hello_swtr.sol
@@ -67,7 +98,7 @@ pragma solidity ^0.8.19;
 contract Swisstronik {
     string private message;
 
-    constructor(string memory _message) payable {
+    constructor(string memory _message) {
         message = _message;
     }
 
@@ -105,7 +136,7 @@ EOL
   cat <<EOL > scripts/setMessage.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpclink = hre.network.config.url;
@@ -141,7 +172,7 @@ EOL
   cat <<EOL > scripts/getMessage.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { decryptNodeResponse } = require("@swisstronik/utils");
 
 const sendShieldedQuery = async (provider, destination, data) => {
   const rpclink = hre.network.config.url;
@@ -182,22 +213,7 @@ task_2() {
   TOKEN_NAME=$(sanitize_input "$unsafe_token_name")
   read -p "Enter the token symbol: " unsafe_token_symbol
   TOKEN_SYMBOL=$(sanitize_input "$unsafe_token_symbol")
-
-  # Configure Hardhat
-  cat <<EOL > hardhat.config.js
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
-
-module.exports = {
-  solidity: "0.8.20",
-  networks: {
-    swisstronik: {
-      url: "https://json-rpc.testnet.swisstronik.com/",
-      accounts: [\`0x\${process.env.PRIVATE_KEY}\`],
-    },
-  },
-};
-EOL
+  read -p "Enter the recipient address for transfer: " RECIPIENT_ADDRESS
 
   # Create and compile the contract
   cat <<EOL > contracts/Token.sol
@@ -207,14 +223,14 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract TestToken is ERC20 {
-    constructor()ERC20("$TOKEN_NAME","$TOKEN_SYMBOL"){}
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 
     function mint100tokens() public {
-        _mint(msg.sender, 100*10**18);
+        _mint(msg.sender, 100 * 10**18);
     }
 
-    function burn100tokens() public{
-        _burn(msg.sender, 100*10**18);
+    function burn100tokens() public {
+        _burn(msg.sender, 100 * 10**18);
     }
 }
 EOL
@@ -226,11 +242,10 @@ const hre = require("hardhat");
 const fs = require("fs");
 
 async function main() {
-  const contract = await hre.ethers.deployContract("TestToken");
+  const contract = await hre.ethers.deployContract("TestToken", ["$TOKEN_NAME", "$TOKEN_SYMBOL"]);
   await contract.waitForDeployment();
-  const deployedContract = await contract.getAddress();
-  fs.writeFileSync("contract.txt", deployedContract);
-  console.log(\`Contract deployed to \${deployedContract}\`);
+  fs.writeFileSync("contract.txt", contract.target);
+  console.log(\`Contract deployed to \${contract.target}\`);
 }
 
 main().catch((error) => {
@@ -244,7 +259,7 @@ EOL
   cat <<EOL > scripts/mint.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpcLink = hre.network.config.url;
@@ -270,7 +285,7 @@ async function main() {
     0
   );
   await mint100TokensTx.wait();
-  console.log("Transaction Receipt: ", \`Minting token has been success! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${mint100TokensTx.hash}\`);
+  console.log("Transaction Receipt: ", \`Minting token has been successful! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${mint100TokensTx.hash}\`);
 }
 
 main().catch((error) => {
@@ -284,7 +299,7 @@ EOL
   cat <<EOL > scripts/transfer.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpcLink = hre.network.config.url;
@@ -303,8 +318,8 @@ async function main() {
   const contractFactory = await hre.ethers.getContractFactory("TestToken");
   const contract = contractFactory.attach(contractAddress);
   const functionName = "transfer";
-  const amount = 1 * 10 ** 18;
-  const functionArgs = ["0x16af037878a6cAce2Ea29d39A3757aC2F6F7aac1", amount.toString()];
+  const amount = ethers.parseUnits("1", "ether");
+  const functionArgs = ["$RECIPIENT_ADDRESS", amount.toString()];
   const transaction = await sendShieldedTransaction(
     signer,
     contractAddress,
@@ -312,7 +327,7 @@ async function main() {
     0
   );
   await transaction.wait();
-  console.log("Transaction Response: ", \`Transfer token has been success! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${transaction.hash}\`);
+  console.log("Transaction Response: ", \`Transfer token has been successful! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${transaction.hash}\`);
 }
 
 main().catch((error) => {
@@ -335,35 +350,16 @@ task_3() {
   read -p "Enter the NFT symbol: " unsafe_nft_symbol
   NFT_SYMBOL=$(sanitize_input "$unsafe_nft_symbol")
 
-  # Configure Hardhat
-  cat <<EOL > hardhat.config.js
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
-
-module.exports = {
-  solidity: "0.8.20",
-  networks: {
-    swisstronik: {
-      url: "https://json-rpc.testnet.swisstronik.com/",
-      accounts: [\`0x\${process.env.PRIVATE_KEY}\`],
-    },
-  },
-};
-EOL
-
   # Create and compile the contract
   cat <<EOL > contracts/NFT.sol
 // SPDX-License-Identifier: MIT
-// Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 
 contract TestNFT is ERC721, ERC721Burnable {
-    constructor()
-        ERC721("$NFT_NAME","$NFT_SYMBOL")
-    {}
+    constructor(string memory name, string memory symbol) ERC721(name, symbol) {}
 
     function safeMint(address to, uint256 tokenId) public {
         _safeMint(to, tokenId);
@@ -378,11 +374,10 @@ const hre = require("hardhat");
 const fs = require("fs");
 
 async function main() {
-  const contract = await hre.ethers.deployContract("TestNFT");
+  const contract = await hre.ethers.deployContract("TestNFT", ["$NFT_NAME", "$NFT_SYMBOL"]);
   await contract.waitForDeployment();
-  const deployedContract = await contract.getAddress();
-  fs.writeFileSync("contract.txt", deployedContract);
-  console.log(\`Contract deployed to \${deployedContract}\`);
+  fs.writeFileSync("contract.txt", contract.target);
+  console.log(\`Contract deployed to \${contract.target}\`);
 }
 
 main().catch((error) => {
@@ -396,7 +391,7 @@ EOL
   cat <<EOL > scripts/mint.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpcLink = hre.network.config.url;
@@ -422,7 +417,7 @@ async function main() {
     0
   );
   await safeMintTx.wait();
-  console.log("Transaction Receipt: ", \`Minting NFT has been success! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${safeMintTx.hash}\`);
+  console.log("Transaction Receipt: ", \`Minting NFT has been successful! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${safeMintTx.hash}\`);
 }
 
 main().catch((error) => {
@@ -444,23 +439,7 @@ task_4() {
   TOKEN_NAME=$(sanitize_input "$unsafe_token_name")
   read -p "Enter the token symbol: " unsafe_token_symbol
   TOKEN_SYMBOL=$(sanitize_input "$unsafe_token_symbol")
-
-  # Configure Hardhat
-  cat <<EOL > hardhat.config.js
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
-
-module.exports = {
-  defaultNetwork: "swisstronik",
-  solidity: "0.8.20",
-  networks: {
-    swisstronik: {
-      url: "https://json-rpc.testnet.swisstronik.com/",
-      accounts: [\`0x\${process.env.PRIVATE_KEY}\`],
-    },
-  },
-};
-EOL
+  read -p "Enter the recipient address for transfer: " RECIPIENT_ADDRESS
 
   # Create and compile the contracts
   cat <<EOL > contracts/IPERC20.sol
@@ -566,10 +545,10 @@ pragma solidity ^0.8.17;
 import "./PERC20.sol";
 
 contract PERC20Sample is PERC20 {
-    constructor() PERC20("$TOKEN_NAME", "$TOKEN_SYMBOL") {}
+    constructor(string memory name, string memory symbol) PERC20(name, symbol) {}
 
     function mint100tokens() public {
-        _mint(msg.sender, 100*10**18);
+        _mint(msg.sender, 100 * 10**18);
     }
 
     function balanceOf(address account) public view override returns (uint256) {
@@ -591,12 +570,10 @@ const { ethers } = require("hardhat");
 const fs = require("fs");
 
 async function main() {
-  const perc20 = await ethers.deployContract("PERC20Sample");
+  const perc20 = await ethers.deployContract("PERC20Sample", ["$TOKEN_NAME", "$TOKEN_SYMBOL"]);
   await perc20.waitForDeployment();
-  const deployedContract = await perc20.getAddress();
-  fs.writeFileSync("contract.txt", deployedContract);
-
-  console.log(\`PERC20Sample was deployed to: \${deployedContract}\`)
+  fs.writeFileSync("contract.txt", perc20.target);
+  console.log(\`PERC20Sample was deployed to: \${perc20.target}\`)
 }
 
 main().catch((error) => {
@@ -610,7 +587,7 @@ EOL
   cat <<EOL > scripts/mint.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpcLink = hre.network.config.url;
@@ -636,7 +613,7 @@ async function main() {
     0
   );
   await mint100TokensTx.wait();
-  console.log("Transaction Receipt: ", \`Minting token has been success! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${mint100TokensTx.hash}\`);
+  console.log("Transaction Receipt: ", \`Minting token has been successful! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${mint100TokensTx.hash}\`);
 }
 
 main().catch((error) => {
@@ -650,7 +627,7 @@ EOL
   cat <<EOL > scripts/transfer.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpcLink = hre.network.config.url;
@@ -669,8 +646,8 @@ async function main() {
   const contractFactory = await hre.ethers.getContractFactory("PERC20Sample");
   const contract = contractFactory.attach(contractAddress);
   const functionName = "transfer";
-  const amount = 1 * 10 ** 18;
-  const functionArgs = ["0x16af037878a6cAce2Ea29d39A3757aC2F6F7aac1", amount.toString()];
+  const amount = ethers.parseUnits("1", "ether");
+  const functionArgs = ["$RECIPIENT_ADDRESS", amount.toString()];
   const transaction = await sendShieldedTransaction(
     signer,
     contractAddress,
@@ -678,7 +655,7 @@ async function main() {
     0
   );
   await transaction.wait();
-  console.log("Transaction Response: ", \`Transfer token has been success! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${transaction.hash}\`);
+  console.log("Transaction Response: ", \`Transfer token has been successful! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${transaction.hash}\`);
 }
 
 main().catch((error) => {
@@ -701,22 +678,6 @@ task_5() {
   read -p "Enter the NFT symbol: " unsafe_nft_symbol
   NFT_SYMBOL=$(sanitize_input "$unsafe_nft_symbol")
 
-  # Configure Hardhat
-  cat <<EOL > hardhat.config.js
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
-
-module.exports = {
-  solidity: "0.8.20",
-  networks: {
-    swisstronik: {
-      url: "https://json-rpc.testnet.swisstronik.com/",
-      accounts: [\`0x\${process.env.PRIVATE_KEY}\`],
-    },
-  },
-};
-EOL
-
   # Create and compile the contract
   cat <<EOL > contracts/PrivateNFT.sol
 // SPDX-License-Identifier: MIT
@@ -727,8 +688,8 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract PrivateNFT is ERC721, ERC721Burnable, Ownable {
-    constructor(address initialOwner)
-        ERC721("$NFT_NAME","$NFT_SYMBOL")
+    constructor(string memory name, string memory symbol, address initialOwner)
+        ERC721(name, symbol)
         Ownable(initialOwner)
     {}
 
@@ -764,11 +725,10 @@ const fs = require("fs");
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const contractFactory = await hre.ethers.getContractFactory("PrivateNFT");
-  const contract = await contractFactory.deploy(deployer.address);
+  const contract = await contractFactory.deploy("$NFT_NAME", "$NFT_SYMBOL", deployer.address);
   await contract.waitForDeployment();
-  const deployedContract = await contract.getAddress();
-  fs.writeFileSync("contract.txt", deployedContract);
-  console.log(\`Contract deployed to \${deployedContract}\`);
+  fs.writeFileSync("contract.txt", contract.target);
+  console.log(\`Contract deployed to \${contract.target}\`);
 }
 
 main().catch((error) => {
@@ -782,7 +742,7 @@ EOL
   cat <<EOL > scripts/mint.js
 const hre = require("hardhat");
 const fs = require("fs");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
   const rpcLink = hre.network.config.url;
@@ -808,7 +768,7 @@ async function main() {
     0
   );
   await safeMintTx.wait();
-  console.log("Transaction Receipt: ", \`Minting NFT has been success! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${safeMintTx.hash}\`);
+  console.log("Transaction Receipt: ", \`Minting NFT has been successful! Transaction hash: https://explorer-evm.testnet.swisstronik.com/tx/\${safeMintTx.hash}\`);
 }
 
 main().catch((error) => {
@@ -825,32 +785,17 @@ EOL
 task_6() {
   echo "Running Task 6: Deploying an upgradable Swisstronik contract..."
 
-  # Configure Hardhat
-  cat <<EOL > hardhat.config.js
-require("@nomicfoundation/hardhat-toolbox");
-require('@openzeppelin/hardhat-upgrades');
-require("dotenv").config();
-
-module.exports = {
-  solidity: "0.8.20",
-  networks: {
-    swisstronik: {
-      url: "https://json-rpc.testnet.swisstronik.com/",
-      accounts: [\`0x\${process.env.PRIVATE_KEY}\`],
-    },
-  },
-};
-EOL
-
   # Create and compile the contract
   cat <<EOL > contracts/Hello_swtr.sol
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-contract Swisstronik {
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+contract Swisstronik is Initializable {
     string private message;
 
-    function initialize(string memory _message) public {
+    function initialize(string memory _message) public initializer {
         message = _message;
     }
 
@@ -871,31 +816,14 @@ const { ethers, upgrades } = require("hardhat");
 const fs = require("fs");
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
-
-  console.log("Deploying contracts with the account:", deployer.address);
-
   const Swisstronik = await ethers.getContractFactory('Swisstronik');
-  const swisstronik = await Swisstronik.deploy();
+  const swisstronik = await upgrades.deployProxy(Swisstronik, ['Hello Swisstronik from Happy Cuan Airdrop!!'], { kind: 'transparent' });
   await swisstronik.waitForDeployment();
-  console.log('Non-proxy Swisstronik deployed to:', swisstronik.target);
   fs.writeFileSync("contract.txt", swisstronik.target);
-
-  console.log(\`Deployment transaction hash: https://explorer-evm.testnet.swisstronik.com/address/\${swisstronik.target}\`);
-
-  console.log('');
-
-  const upgradedSwisstronik = await upgrades.deployProxy(Swisstronik, ['Hello Swisstronik from Happy Cuan Airdrop!!'], { kind: 'transparent' });
-  await upgradedSwisstronik.waitForDeployment();
-  console.log('Proxy Swisstronik deployed to:', upgradedSwisstronik.target);
-  fs.writeFileSync("proxiedContract.txt", upgradedSwisstronik.target);
-
-  console.log(\`Deployment transaction hash: https://explorer-evm.testnet.swisstronik.com/address/\${upgradedSwisstronik.target}\`);
+  console.log('Proxy Swisstronik deployed to:', swisstronik.target);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
+main().catch((error) => {
     console.error(error);
     process.exit(1);
   });
@@ -905,7 +833,7 @@ EOL
   # Create and run setMessage.js
   cat <<EOL > scripts/setMessage.js
 const hre = require("hardhat");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { encryptDataField } = require("@swisstronik/utils");
 const fs = require("fs");
 
 const sendShieldedTransaction = async (signer, destination, data, value) => {
@@ -920,7 +848,7 @@ const sendShieldedTransaction = async (signer, destination, data, value) => {
 };
 
 async function main() {
-  const contractAddress = fs.readFileSync("proxiedContract.txt", "utf8").trim();
+  const contractAddress = fs.readFileSync("contract.txt", "utf8").trim();
   const [signer] = await hre.ethers.getSigners();
   const contractFactory = await hre.ethers.getContractFactory("Swisstronik");
   const contract = contractFactory.attach(contractAddress);
@@ -941,7 +869,7 @@ EOL
   # Create and run getMessage.js
   cat <<EOL > scripts/getMessage.js
 const hre = require("hardhat");
-const { encryptDataField, decryptNodeResponse } = require("@swisstronik/utils");
+const { decryptNodeResponse } = require("@swisstronik/utils");
 const fs = require("fs");
 
 const sendShieldedQuery = async (provider, destination, data) => {
@@ -955,7 +883,7 @@ const sendShieldedQuery = async (provider, destination, data) => {
 };
 
 async function main() {
-  const contractAddress = fs.readFileSync("proxiedContract.txt", "utf8").trim();
+  const contractAddress = fs.readFileSync("contract.txt", "utf8").trim();
   const [signer] = await hre.ethers.getSigners();
   const contractFactory = await hre.ethers.getContractFactory("Swisstronik");
   const contract = contractFactory.attach(contractAddress);
@@ -974,6 +902,13 @@ EOL
   echo "Task 6 completed successfully."
 }
 
+# Function to clean up generated files
+cleanup() {
+  echo "Cleaning up generated files..."
+  rm -rf contracts/ scripts/ cache/ artifacts/ node_modules/ package.json package-lock.json hardhat.config.js contract.txt
+  echo "Cleanup complete."
+}
+
 # --- Main Menu ---
 
 main_menu() {
@@ -985,9 +920,10 @@ main_menu() {
     echo "2. Create and manage a new ERC20 token"
     echo "3. Create and manage a new NFT"
     echo "4. Deploy and interact with a PERC20 token"
-    echo "5. Create and manage a private NFT"
+    echo "5. Create and manage a new private NFT"
     echo "6. Deploy an upgradable Swisstronik contract"
-    echo "7. Exit"
+    echo "7. Cleanup generated files"
+    echo "8. Exit"
     echo "========================================"
     read -p "Choose an option: " choice
 
@@ -998,7 +934,8 @@ main_menu() {
       4) task_4 ;;
       5) task_5 ;;
       6) task_6 ;;
-      7) exit 0 ;;
+      7) cleanup ;;
+      8) exit 0 ;;
       *) echo "Invalid option. Please try again." ;;
     esac
   done
@@ -1007,4 +944,7 @@ main_menu() {
 # --- Script Execution ---
 
 check_env_vars
+check_requirements
+install_dependencies
+initialize_project
 main_menu
