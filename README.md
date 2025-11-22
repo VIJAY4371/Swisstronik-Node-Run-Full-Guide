@@ -1,95 +1,71 @@
-# Swisstronik-Node-Run-Full-Guide
+# Secure Swisstronik Contract Deployment and Interaction Script
 
-## Swisstronik Testnet 2.0 Task
+This repository contains a secure script for deploying and interacting with Swisstronik smart contracts. The `secure-script.sh` consolidates the functionality of the previous insecure scripts into a single, robust, and user-friendly solution.
 
-Go: https://www.swisstronik.com/testnet2/dashboard
+## Security First
 
-![Screenshot 2024-08-02 121109](https://github.com/user-attachments/assets/7eedf16f-ad00-4e01-b7ac-4ae98d9c23b1)
+The primary goal of this script is to provide a secure environment for managing your Swisstronik contracts. It enforces security best practices by:
 
-🔶Claim Faucet First: https://faucet.testnet.swisstronik.com/
+- **Eliminating Remote Code Execution**: The script does not download or execute remote scripts.
+- **Secure Private Key Handling**: It requires the private key to be set as an environment variable, preventing it from being stored in plaintext or passed as a command-line argument.
+- **No Unnecessary Privileges**: The script does not use `sudo`, reducing its attack surface.
 
-## Let's Start Technical Task
+## Prerequisites
 
-1️⃣ Task 1 - Deploy a simple contract using Hardhat
+Before using the script, you need to have the following installed:
 
-Create new Repository & Copy this Code & Paste in ur Repo: https://github.com/somyakantdash/Swisstronik-Node-Run-Full-Guide/blob/main/task1.sh
+- **Node.js and npm**: [https://nodejs.org/](https://nodejs.org/)
+- **Hardhat**: You can install it locally by running `npm install --save-dev hardhat` in your project directory.
 
-Command 1
-```
-chmod +x task1.sh && ./task1.sh
-```
+## Setup
 
-Command 2
-```
-git add . && git commit -m "feat: initiated the project" && git push origin main
-```
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository-url>
+    cd <repository-directory>
+    ```
 
-2️⃣ Task 2 - Mint 100 ERC-20 tokens
+2.  **Install dependencies**:
+    ```bash
+    npm install dotenv @swisstronik/utils @openzeppelin/contracts @nomicfoundation/hardhat-toolbox @openzeppelin/hardhat-upgrades hardhat
+    ```
 
-Create new .sh file in same repository & put this code: https://github.com/somyakantdash/Swisstronik-Node-Run-Full-Guide/blob/main/task2.sh
+3.  **Set the `PRIVATE_KEY` environment variable**:
+    The script requires your private key to be set as an environment variable. You can do this in your shell's configuration file (e.g., `.bashrc`, `.zshrc`) or by exporting it in your current session:
+    ```bash
+    export PRIVATE_KEY="your-private-key-without-0x"
+    ```
+    **IMPORTANT**: Do not include the `0x` prefix in your private key.
 
-Command 1
-```
-chmod +x task2.sh && ./task2.sh
-```
+## Usage
 
-Command 2
-```
-git add . && git commit -m "feat: initiated the project" && git push origin main
-```
+1.  **Make the script executable**:
+    ```bash
+    chmod +x secure-script.sh
+    ```
 
-3️⃣ Task 3 - Mint a ERC-721 token
+2.  **Run the script**:
+    ```bash
+    ./secure-script.sh
+    ```
 
-Create new .sh file in same repository & put this code: https://github.com/somyakantdash/Swisstronik-Node-Run-Full-Guide/blob/main/task3.sh
+3.  **Choose an option from the menu**:
+    The script will present you with a menu of options. Simply enter the number corresponding to the task you want to perform.
 
-Command 1
-```
-chmod +x task3.sh && ./task3.sh
-```
+    ```
+    ========================================
+      Secure Swisstronik Script Menu
+    ========================================
+    1. Deploy a simple Swisstronik contract
+    2. Create and manage a new ERC20 token
+    3. Create and manage a new NFT
+    4. Deploy and interact with a PERC20 token
+    5. Create and manage a private NFT
+    6. Deploy an upgradable Swisstronik contract
+    7. Exit
+    ========================================
+    ```
 
-Command 2
-```
-git add . && git commit -m "feat: initiated the project" && git push origin main
-```
+## Contributing
 
-4️⃣ Task 4 - Mint a PERC-20 token
-
-Create new .sh file in same repository & put this code: https://github.com/somyakantdash/Swisstronik-Node-Run-Full-Guide/blob/main/task4.sh
-
-Command 1
-```
-chmod +x task4.sh && ./task4.sh
-```
-
-Command 2
-```
-git add . && git commit -m "feat: initiated the project" && git push origin main
-```
-
-5️⃣ Task 5 - Deploy a Private NFT
-
-Create new file in same repository & put this code: https://github.com/somyakantdash/Swisstronik-Node-Run-Full-Guide/blob/main/task5.sh
-
-Command 1
-```
-chmod +x task5.sh && ./task5.sh
-```
-
-Command 2
-```
-git add . && git commit -m "feat: initiated the project" && git push origin main
-```
-
-6️⃣ Task 6 - Deploy Proxy
-
-Create new file in same repository & put this code: https://github.com/somyakantdash/Swisstronik-Node-Run-Full-Guide/blob/main/task6.sh
-
-Command 1
-```
-chmod +x task6.sh && ./task6.sh
-```
-
-Command 2
-```
-git add . && git commit -m "feat: initiated the project" && git push origin main
-```
+Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.
